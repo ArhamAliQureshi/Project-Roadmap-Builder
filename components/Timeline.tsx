@@ -12,8 +12,8 @@ interface TimelineProps {
 const Timeline: React.FC<TimelineProps> = ({ data, onAddStage, onUpdateStage, onPushHistory }) => {
   const STAGES_PER_ROW = 3;
   const STAGE_WIDTH = 450;
-  const ROW_HEIGHT = 500; // Reduced to pull road higher
-  const ROAD_OFFSET_Y = 140; // Adjusted for better header spacing
+  const ROW_HEIGHT = 500;
+  const ROAD_OFFSET_Y = 140;
   const HORIZONTAL_PADDING = 100;
 
   const numRows = Math.ceil(data.stages.length / STAGES_PER_ROW);
@@ -94,13 +94,6 @@ const Timeline: React.FC<TimelineProps> = ({ data, onAddStage, onUpdateStage, on
         className="overflow-visible"
         style={{ minWidth: '100%' }}
       >
-        <defs>
-          <filter id="road-glow" x="-20%" y="-20%" width="140%" height="140%">
-            <feGaussianBlur stdDeviation="8" result="blur" />
-            <feComposite in="SourceGraphic" in2="blur" operator="over" />
-          </filter>
-        </defs>
-
         <rect width={VIEWBOX_WIDTH} height={VIEWBOX_HEIGHT} fill="white" />
 
         <g transform={`translate(${VIEWBOX_WIDTH / 2}, 60)`} className="svg-export-only">
@@ -128,7 +121,7 @@ const Timeline: React.FC<TimelineProps> = ({ data, onAddStage, onUpdateStage, on
           strokeLinecap="round"
         />
 
-        {/* Main Road Surface - Darker as per screenshot */}
+        {/* Main Road Surface */}
         <path
           d={pathData}
           fill="none"
@@ -137,7 +130,7 @@ const Timeline: React.FC<TimelineProps> = ({ data, onAddStage, onUpdateStage, on
           strokeLinecap="round"
         />
 
-        {/* Road Dashes - Slightly more visible */}
+        {/* Road Dashes */}
         <path
           d={pathData}
           fill="none"
@@ -148,6 +141,7 @@ const Timeline: React.FC<TimelineProps> = ({ data, onAddStage, onUpdateStage, on
           opacity="0.4"
         />
 
+        {/* Final Add Button */}
         <g 
           className="no-export cursor-pointer group/plus" 
           transform={`translate(${plusX}, ${plusY})`}
@@ -188,7 +182,6 @@ const Timeline: React.FC<TimelineProps> = ({ data, onAddStage, onUpdateStage, on
               {/* Stage Detail Card */}
               <foreignObject
                 x={pos.x - 110}
-                // Refined offsets for visual closeness to the road
                 y={isPeak ? pos.y + 35 : pos.y - 255}
                 width="220"
                 height="170"

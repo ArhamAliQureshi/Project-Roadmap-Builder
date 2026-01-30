@@ -112,13 +112,11 @@ const App: React.FC = () => {
     clonedSvg.setAttribute('xmlns', 'http://www.w3.org/2000/svg');
     clonedSvg.setAttribute('xmlns:xlink', 'http://www.w3.org/1999/xlink');
 
-    // Reveal the hidden header elements specifically for the export
     const exportOnlyElements = clonedSvg.querySelectorAll('.svg-export-only');
     exportOnlyElements.forEach(el => {
       (el as HTMLElement).style.display = 'block';
     });
 
-    // Remove elements that should not be exported (like the plus button)
     const noExportElements = clonedSvg.querySelectorAll('.no-export');
     noExportElements.forEach(el => {
       el.remove();
@@ -242,7 +240,7 @@ const App: React.FC = () => {
         <div className="overflow-x-auto overflow-y-visible pb-12 custom-scrollbar scroll-smooth">
           <Timeline 
             data={data} 
-            onAddStage={addNewStage} 
+            onAddStage={addNewStage}
             onUpdateStage={updateStage}
             onPushHistory={() => pushToHistory(data)}
           />
