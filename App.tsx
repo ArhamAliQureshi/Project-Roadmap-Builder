@@ -1,5 +1,5 @@
 
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { GoogleGenAI, Type } from "@google/genai";
 import { ProjectStage } from './types';
 import { INITIAL_STAGES, THEME_COLORS } from './constants';
@@ -8,17 +8,22 @@ import StageEditor from './components/StageEditor';
 import JsonEditor from './components/JsonEditor';
 
 const STORAGE_KEY = 'roadmap_visionary_data';
+const MAX_HISTORY = 30;
 
 const App: React.FC = () => {
   const [stages, setStages] = useState<ProjectStage[]>(() => {
     const saved = localStorage.getItem(STORAGE_KEY);
     return saved ? JSON.parse(saved) : INITIAL_STAGES;
   });
+  const [history, setHistory] = useState<ProjectStage[][]>([]);
   const [isAiLoading, setIsAiLoading] = useState(false);
   const [prompt, setPrompt] = useState('');
   const [saveStatus, setSaveStatus] = useState<'idle' | 'saved'>('idle');
   const [draggedIndex, setDraggedIndex] = useState<number | null>(null);
-  const [activeSidebarTab, setActiveSidebarTab] = useState<'ai' | 'json'>('json'); // Set JSON as default per screenshot
+  const [activeSidebarTab, setActiveSidebarTab] = useState<'ai' | 'json'>('json');
+
+  // Ref to track state for history without triggering effects
+  const lastStagesRef = useRef<ProjectStage[]>(stages);
 
   useEffect(() => {
     if (saveStatus === 'saved') {
@@ -27,23 +32,60 @@ const App: React.FC = () => {
     }
   }, [saveStatus]);
 
+  const pushToHistory = useCallback((currentState: ProjectStage[]) => {
+    setHistory(prev => {
+      const newHistory = [...prev, JSON.parse(JSON.stringify(currentState))];
+      if (newHistory.length > MAX_HISTORY) return newHistory.slice(1);
+      return newHistory;
+    });
+  }, []);
+
+  const undo = () => {
+    if (history.length === 0) return;
+    const previousState = history[history.length - 1];
+    setHistory(prev => prev.slice(0, -1));
+    setStages(previousState);
+    lastStagesRef.current = previousState;
+  };
+
   const addNewStage = () => {
+    pushToHistory(stages);
     const newId = Math.random().toString(36).substr(2, 9);
     const color = THEME_COLORS[stages.length % THEME_COLORS.length];
-    setStages([...stages, { 
+    const newStages = [...stages, { 
       id: newId, 
       title: 'New Milestone', 
       description: 'Describe what happens in this stage of your journey.', 
       color 
-    }]);
+    }];
+    setStages(newStages);
+    lastStagesRef.current = newStages;
   };
 
   const removeStage = (id: string) => {
-    setStages(stages.filter(s => s.id !== id));
+    pushToHistory(stages);
+    const newStages = stages.filter(s => s.id !== id);
+    setStages(newStages);
+    lastStagesRef.current = newStages;
   };
 
   const updateStage = (id: string, updates: Partial<ProjectStage>) => {
-    setStages(stages.map(s => s.id === id ? { ...s, ...updates } : s));
+    // For typing/updates, we check if it's a "significant" start of a change
+    // Usually undo in editors captures the state before the first character or on blur
+    // To keep it simple but effective, we'll push to history if it's the first edit in a sequence
+    // Note: In a production app, we might debounce this.
+    const newStages = stages.map(s => s.id === id ? { ...s, ...updates } : s);
+    setStages(newStages);
+    lastStagesRef.current = newStages;
+  };
+
+  const handleJsonChange = (newStages: ProjectStage[]) => {
+    // We only push to history if the new state is actually different
+    if (JSON.stringify(newStages) !== JSON.stringify(stages)) {
+      pushToHistory(stages);
+      setStages(newStages);
+      lastStagesRef.current = newStages;
+    }
   };
 
   const saveToLocalStorage = () => {
@@ -76,6 +118,7 @@ const App: React.FC = () => {
   };
 
   const handleDragStart = (index: number) => {
+    pushToHistory(stages);
     setDraggedIndex(index);
   };
 
@@ -90,6 +133,7 @@ const App: React.FC = () => {
     
     setDraggedIndex(index);
     setStages(newStages);
+    lastStagesRef.current = newStages;
   }, [draggedIndex, stages]);
 
   const handleDragEnd = () => {
@@ -121,6 +165,7 @@ const App: React.FC = () => {
       });
 
       const data = JSON.parse(response.text);
+      pushToHistory(stages);
       const newStages = data.map((item: any, index: number) => ({
         id: Math.random().toString(36).substr(2, 9),
         title: item.title,
@@ -128,6 +173,7 @@ const App: React.FC = () => {
         color: THEME_COLORS[index % THEME_COLORS.length]
       }));
       setStages(newStages);
+      lastStagesRef.current = newStages;
       setPrompt('');
     } catch (error) {
       console.error('Error generating stages:', error);
@@ -172,6 +218,18 @@ const App: React.FC = () => {
                 </div>
                 
                 <div className="flex items-center gap-3">
+                  <button 
+                    onClick={undo}
+                    disabled={history.length === 0}
+                    className="flex items-center gap-2 px-4 py-2.5 bg-white text-slate-700 rounded-xl transition-all border border-slate-200 shadow-sm hover:shadow-md active:scale-95 disabled:opacity-30 disabled:cursor-not-allowed group"
+                    title="Undo last action"
+                  >
+                    <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 transition-transform group-active:-rotate-45" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 10h10a8 8 0 018 8v2M3 10l6 6m-6-6l6-6" />
+                    </svg>
+                    <span className="font-bold text-[11px] uppercase tracking-widest">Undo</span>
+                  </button>
+
                   <button 
                     onClick={exportAsSvg}
                     disabled={stages.length === 0}
@@ -251,7 +309,6 @@ const App: React.FC = () => {
             <div className="lg:col-span-5">
               <div className="bg-[#f1f3f5] p-6 rounded-[48px] border border-slate-200/50 sticky top-8 flex flex-col min-h-[700px]">
                 <div className="bg-white p-6 rounded-[40px] shadow-sm flex-grow flex flex-col">
-                  {/* Screenshot-matched Tab Switcher */}
                   <div className="flex bg-[#f8fafc] p-1.5 rounded-[22px] mb-8 border border-slate-100">
                     <button 
                       onClick={() => setActiveSidebarTab('ai')}
@@ -316,7 +373,7 @@ const App: React.FC = () => {
                     </div>
                   ) : (
                     <div className="flex-grow flex flex-col animate-in fade-in slide-in-from-left-4 duration-300">
-                      <JsonEditor stages={stages} onChange={setStages} />
+                      <JsonEditor stages={stages} onChange={handleJsonChange} />
                       <p className="mt-6 text-[11px] text-slate-400 font-bold leading-relaxed opacity-70">
                         Pro Tip: Edits here will instantly reflect in the visual roadmap and the editor on the left. You can copy-paste entire roadmaps from other projects here.
                       </p>
