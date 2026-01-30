@@ -1,5 +1,5 @@
 
-import React, { useState, useEffect, useCallback, useRef } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { GoogleGenAI, Type } from "@google/genai";
 import { ProjectStage, RoadmapData } from './types';
 import { INITIAL_STAGES, THEME_COLORS } from './constants';
@@ -104,38 +104,97 @@ const App: React.FC = () => {
     setSaveStatus('saved');
   };
 
-  const exportAsSvg = () => {
+  const getSanitizedSvg = () => {
     const svgElement = document.getElementById('roadmap-svg-export');
-    if (!svgElement) return;
+    if (!svgElement) return null;
 
     const clonedSvg = svgElement.cloneNode(true) as SVGElement;
     clonedSvg.setAttribute('xmlns', 'http://www.w3.org/2000/svg');
-    clonedSvg.setAttribute('xmlns:xlink', 'http://www.w3.org/1999/xlink');
 
+    // Handle export-only elements
     const exportOnlyElements = clonedSvg.querySelectorAll('.svg-export-only');
     exportOnlyElements.forEach(el => {
       (el as HTMLElement).style.display = 'block';
     });
 
+    // Handle no-export elements
     const noExportElements = clonedSvg.querySelectorAll('.no-export');
     noExportElements.forEach(el => {
       el.remove();
     });
 
-    const serializer = new XMLSerializer();
-    let source = serializer.serializeToString(clonedSvg);
+    // Inline basic styles to ensure they carry over
+    const styles = `
+      text { font-family: 'Inter', sans-serif; }
+      .svg-export-only { display: block !important; }
+    `;
+    const styleElement = document.createElement('style');
+    styleElement.textContent = styles;
+    clonedSvg.prepend(styleElement);
 
-    const preface = '<?xml version="1.0" standalone="no"?>\r\n';
-    const svgBlob = new Blob([preface, source], { type: 'image/svg+xml;charset=utf-8' });
-    const svgUrl = URL.createObjectURL(svgBlob);
+    return clonedSvg;
+  };
+
+  const exportAsSvg = () => {
+    const clonedSvg = getSanitizedSvg();
+    if (!clonedSvg) return;
+
+    const serializer = new XMLSerializer();
+    const source = serializer.serializeToString(clonedSvg);
+    const svgBlob = new Blob([source], { type: 'image/svg+xml;charset=utf-8' });
+    const url = URL.createObjectURL(svgBlob);
     
-    const downloadLink = document.createElement('a');
-    downloadLink.href = svgUrl;
-    downloadLink.download = `${data.title.toLowerCase().replace(/\s+/g, '-')}-${new Date().toISOString().split('T')[0]}.svg`;
-    document.body.appendChild(downloadLink);
-    downloadLink.click();
-    document.body.removeChild(downloadLink);
-    URL.revokeObjectURL(svgUrl);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `${data.title.toLowerCase().replace(/\s+/g, '-')}.svg`;
+    link.click();
+    URL.revokeObjectURL(url);
+  };
+
+  const exportAsJpg = async () => {
+    const clonedSvg = getSanitizedSvg();
+    if (!clonedSvg) return;
+
+    // To prevent "tainted canvas" error with foreignObject, we must ensure 
+    // the image is drawn from a data URL and the browser doesn't block the export.
+    // Note: Some browsers strictly block toDataURL if foreignObject is present.
+    const width = parseFloat(clonedSvg.getAttribute('width') || '2000');
+    const height = parseFloat(clonedSvg.getAttribute('height') || '2000');
+    
+    const serializer = new XMLSerializer();
+    const svgString = serializer.serializeToString(clonedSvg);
+    
+    // Using base64 encoding instead of Blob URL can sometimes help with tainting
+    const svgBase64 = btoa(unescape(encodeURIComponent(svgString)));
+    const img = new Image();
+    img.crossOrigin = 'anonymous'; // Try to avoid tainting
+
+    img.onload = () => {
+      try {
+        const canvas = document.createElement('canvas');
+        const scale = 2; // Retina quality
+        canvas.width = width * scale;
+        canvas.height = height * scale;
+        const ctx = canvas.getContext('2d');
+        if (ctx) {
+          ctx.fillStyle = 'white';
+          ctx.fillRect(0, 0, canvas.width, canvas.height);
+          ctx.scale(scale, scale);
+          ctx.drawImage(img, 0, 0);
+          
+          // If this fails, it's due to foreignObject security restrictions in the browser
+          const jpgUrl = canvas.toDataURL('image/jpeg', 0.9);
+          const link = document.createElement('a');
+          link.download = `${data.title.toLowerCase().replace(/\s+/g, '-')}.jpg`;
+          link.href = jpgUrl;
+          link.click();
+        }
+      } catch (err) {
+        console.error('Export failed due to browser security restrictions on SVG foreignObjects:', err);
+        alert('Could not export as JPG due to security restrictions. Please try SVG export instead.');
+      }
+    };
+    img.src = `data:image/svg+xml;base64,${svgBase64}`;
   };
 
   const handleDragStart = (index: number) => {
@@ -167,7 +226,7 @@ const App: React.FC = () => {
       const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
       const response = await ai.models.generateContent({
         model: 'gemini-3-flash-preview',
-        contents: `Create a professional 5-7 stage project timeline for the following project description: "${prompt}". Return as JSON array of objects with title and description fields. Each title should be concise (1-3 words).`,
+        contents: `Create a professional project timeline: "${prompt}". Return JSON array of objects: {title, description}.`,
         config: {
           responseMimeType: "application/json",
           responseSchema: {
@@ -183,7 +242,6 @@ const App: React.FC = () => {
           }
         }
       });
-
       const parsedStages = JSON.parse(response.text);
       pushToHistory(data);
       const newStages = parsedStages.map((item: any, index: number) => ({
@@ -195,49 +253,34 @@ const App: React.FC = () => {
       setData(prev => ({ ...prev, stages: newStages }));
       setPrompt('');
     } catch (error) {
-      console.error('Error generating stages:', error);
+      console.error('AI Error:', error);
     } finally {
       setIsAiLoading(false);
     }
   };
 
   return (
-    <div className="min-h-screen flex flex-col bg-[#fcfcfd] text-slate-900 selection:bg-indigo-100">
-      <header className="bg-white border-b border-slate-200 pt-12 pb-8 text-center relative overflow-hidden group">
-        <div className="absolute inset-0 bg-[radial-gradient(#e2e8f0_1px,transparent_1px)] [background-size:16px_16px] opacity-40"></div>
-        <div className="container mx-auto px-4 relative z-10 flex flex-col items-center">
-          <div className="inline-block px-3 py-1 mb-4 text-xs font-bold tracking-widest text-indigo-600 uppercase bg-indigo-50 rounded-full">
-            Strategic Planning
-          </div>
-          
-          <div className="relative w-full max-w-4xl px-4 mb-2 flex justify-center">
-            <div className="relative inline-block w-full text-center">
-              <input 
-                value={data.title}
-                onChange={(e) => updateHeader({ title: e.target.value })}
-                onFocus={() => pushToHistory(data)}
-                className="w-full text-4xl md:text-6xl font-black tracking-tight text-slate-900 bg-transparent text-center border-none outline-none focus:ring-0 placeholder:text-slate-200"
-                placeholder="Roadmap Title"
-              />
-            </div>
-          </div>
-
-          <div className="relative w-full max-w-2xl px-4">
-            <textarea 
-              value={data.description}
-              onChange={(e) => updateHeader({ description: e.target.value })}
-              onFocus={() => pushToHistory(data)}
-              rows={2}
-              className="w-full text-lg text-slate-500 font-medium bg-transparent text-center border-none outline-none focus:ring-0 resize-none placeholder:text-slate-200"
-              placeholder="Visualize your project journey with precision..."
-            />
-          </div>
+    <div className="min-h-screen flex flex-col bg-[#fcfcfd] text-slate-900">
+      <header className="bg-white pt-12 pb-8 text-center relative">
+        <div className="container mx-auto px-4 flex flex-col items-center">
+          <input 
+            value={data.title}
+            onChange={(e) => updateHeader({ title: e.target.value })}
+            className="w-full text-4xl md:text-6xl font-black text-slate-900 bg-transparent text-center border-none outline-none focus:ring-0 placeholder:text-slate-200"
+            placeholder="Roadmap Title"
+          />
+          <textarea 
+            value={data.description}
+            onChange={(e) => updateHeader({ description: e.target.value })}
+            rows={2}
+            className="w-full max-w-2xl text-lg text-slate-500 font-medium bg-transparent text-center border-none outline-none focus:ring-0 resize-none placeholder:text-slate-200 mt-2"
+            placeholder="Description..."
+          />
         </div>
       </header>
 
-      <main className="flex-grow bg-white py-6 relative overflow-hidden">
-        <div className="absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-slate-200 to-transparent"></div>
-        <div className="overflow-x-auto overflow-y-visible pb-12 custom-scrollbar scroll-smooth">
+      <main className="flex-grow bg-white py-6">
+        <div className="overflow-x-auto overflow-y-visible pb-12 custom-scrollbar">
           <Timeline 
             data={data} 
             onAddStage={addNewStage}
@@ -245,197 +288,124 @@ const App: React.FC = () => {
             onPushHistory={() => pushToHistory(data)}
           />
         </div>
-        <div className="absolute inset-x-0 bottom-0 h-px bg-gradient-to-r from-transparent via-slate-200 to-transparent"></div>
       </main>
 
-      <section className="bg-[#f8faff] border-t border-slate-200 p-8 md:p-12">
-        <div className="max-w-7xl mx-auto">
-          <div className="grid grid-cols-1 lg:grid-cols-12 gap-12 items-start">
-            <div className="lg:col-span-7">
-              <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-8 gap-6">
-                <div>
-                  <h2 className="text-2xl font-bold text-slate-900">Project Stages</h2>
-                  <p className="text-sm text-slate-500 mt-1">Manage the milestones of your timeline.</p>
-                </div>
-                
+      <section className="bg-[#f8faff] border-t border-slate-100 p-8 md:p-12">
+        <div className="max-w-7xl mx-auto grid grid-cols-1 lg:grid-cols-12 gap-12">
+          
+          <div className="lg:col-span-7">
+            <div className="flex justify-between items-start mb-10">
+              <div>
+                <h2 className="text-2xl font-black text-slate-900">Project Stages</h2>
+                <p className="text-sm text-slate-500 font-medium">Manage the milestones of your timeline.</p>
+              </div>
+              
+              <div className="flex flex-col items-end gap-3">
                 <div className="flex items-center gap-3">
+                  {/* Undo Button */}
                   <button 
                     onClick={undo}
                     disabled={history.length === 0}
-                    className="flex items-center gap-2 px-4 py-2.5 bg-white text-slate-700 rounded-xl transition-all border border-slate-200 shadow-sm hover:shadow-md active:scale-95 disabled:opacity-30 disabled:cursor-not-allowed group"
-                    title="Undo last action"
+                    className="flex items-center gap-2 px-6 py-2.5 bg-white text-slate-400 border border-slate-200 rounded-2xl transition-all font-black text-[10px] uppercase tracking-widest disabled:opacity-30 hover:text-slate-900 shadow-sm"
                   >
-                    <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 transition-transform group-active:-rotate-45" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 10h10a8 8 0 018 8v2M3 10l6 6m-6-6l6-6" />
-                    </svg>
-                    <span className="font-bold text-[11px] uppercase tracking-widest">Undo</span>
+                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M3 10h10a8 8 0 018 8v2M3 10l6 6m-6-6l6-6"/></svg>
+                    Undo
                   </button>
 
-                  <button 
-                    onClick={exportAsSvg}
-                    disabled={data.stages.length === 0}
-                    className="flex items-center gap-2 px-5 py-2.5 bg-white text-slate-700 rounded-xl transition-all border border-slate-200 shadow-sm hover:shadow-md active:scale-95 disabled:opacity-50"
-                  >
-                    <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
-                    </svg>
-                    <span className="font-bold text-[11px] uppercase tracking-widest">Export SVG</span>
-                  </button>
+                  {/* Segmented Export Control */}
+                  <div className="flex bg-white rounded-2xl border border-slate-200 p-1 shadow-sm">
+                    <button 
+                      onClick={exportAsSvg} 
+                      className="px-5 py-2 text-[10px] font-black uppercase tracking-widest text-slate-500 hover:text-slate-900 transition-all flex items-center gap-1.5 border-r border-slate-100"
+                    >
+                      <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"/></svg>
+                      SVG
+                    </button>
+                    <button 
+                      onClick={exportAsJpg} 
+                      className="px-5 py-2 text-[10px] font-black uppercase tracking-widest text-slate-500 hover:text-slate-900 transition-all flex items-center gap-1.5"
+                    >
+                      <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z"/></svg>
+                      JPG
+                    </button>
+                  </div>
+                </div>
 
+                {/* Prominent Save Button */}
+                <button 
+                  onClick={saveToLocalStorage}
+                  className="w-full md:w-auto px-10 py-3 bg-[#5046e5] text-white rounded-2xl font-black text-[11px] uppercase tracking-widest shadow-xl shadow-indigo-100 flex items-center justify-center gap-2 transition-all hover:bg-[#4338ca] active:scale-[0.98]"
+                >
+                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="3" d="M5 13l4 4L19 7"/></svg>
+                  {saveStatus === 'saved' ? 'Roadmap Saved!' : 'Save Roadmap'}
+                </button>
+              </div>
+            </div>
+            
+            <div className="space-y-6">
+              {data.stages.map((stage, idx) => (
+                <StageEditor 
+                  key={stage.id} 
+                  stage={stage} 
+                  index={idx}
+                  isDragging={draggedIndex === idx}
+                  onUpdate={(updates) => updateStage(stage.id, updates)}
+                  onRemove={() => removeStage(stage.id)}
+                  onDragStart={() => handleDragStart(idx)}
+                  onDragOver={(e) => handleDragOver(e, idx)}
+                  onDragEnd={handleDragEnd}
+                />
+              ))}
+              <button onClick={addNewStage} className="w-full py-10 border-2 border-dashed border-slate-200 rounded-[40px] text-slate-400 font-black uppercase tracking-widest text-[11px] hover:bg-white hover:border-indigo-300 hover:text-indigo-600 transition-all flex items-center justify-center gap-2">
+                <span className="text-xl">+</span> Add Stage
+              </button>
+            </div>
+          </div>
+
+          <div className="lg:col-span-5">
+            <div className="bg-[#f1f3f5] p-6 rounded-[56px] sticky top-8">
+              <div className="bg-white p-8 rounded-[48px] shadow-sm min-h-[640px] flex flex-col">
+                <div className="flex bg-[#f8fafc] p-1.5 rounded-[26px] mb-8 border border-slate-100">
                   <button 
-                    onClick={saveToLocalStorage}
-                    className={`flex items-center gap-2 px-6 py-2.5 rounded-xl transition-all shadow-xl active:scale-95 ${saveStatus === 'saved' ? 'bg-indigo-500 text-white shadow-indigo-200' : 'bg-indigo-600 text-white shadow-[0_10px_20px_-5px_rgba(79,70,229,0.4)]'}`}
+                    onClick={() => setActiveSidebarTab('ai')}
+                    className={`flex-1 py-4 rounded-[22px] text-[10px] font-black uppercase tracking-widest transition-all flex items-center justify-center gap-2 ${activeSidebarTab === 'ai' ? 'bg-white shadow-md text-indigo-600' : 'text-slate-400'}`}
                   >
-                    <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" />
-                    </svg>
-                    <span className="font-black text-[11px] uppercase tracking-widest">
-                      {saveStatus === 'saved' ? 'Saved' : 'Save Roadmap'}
-                    </span>
+                    ✨ AI Blueprint
+                  </button>
+                  <button 
+                    onClick={() => setActiveSidebarTab('json')}
+                    className={`flex-1 py-4 rounded-[22px] text-[10px] font-black uppercase tracking-widest transition-all flex items-center justify-center gap-2 ${activeSidebarTab === 'json' ? 'bg-white shadow-md text-indigo-600' : 'text-slate-400'}`}
+                  >
+                    <span className="text-sm">{"{ }"}</span> JSON Source
                   </button>
                 </div>
-              </div>
-              
-              <div className="space-y-6 max-h-[900px] overflow-y-auto pr-4 custom-scrollbar">
-                {data.stages.length === 0 ? (
-                  <div className="text-center py-24 border-2 border-dashed border-slate-200 rounded-3xl bg-white flex flex-col items-center">
-                    <div className="w-16 h-16 bg-slate-50 rounded-full flex items-center justify-center mb-4">
-                      <svg xmlns="http://www.w3.org/2000/svg" className="h-8 w-8 text-slate-300" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
-                      </svg>
-                    </div>
-                    <p className="text-slate-400 font-bold uppercase tracking-widest text-[10px] mb-6">Your roadmap is currently empty.</p>
-                    <button 
-                      onClick={addNewStage}
-                      className="px-8 py-3 bg-indigo-600 text-white rounded-xl font-black text-sm uppercase tracking-tight hover:bg-indigo-700 transition-all shadow-xl shadow-indigo-100 flex items-center gap-2"
+                
+                {activeSidebarTab === 'ai' ? (
+                  <div className="space-y-6 flex-grow">
+                    <textarea
+                      value={prompt}
+                      onChange={(e) => setPrompt(e.target.value)}
+                      placeholder="Describe your project journey in a few sentences..."
+                      className="w-full h-56 p-6 text-sm font-semibold bg-slate-50 border border-slate-200 rounded-[32px] focus:ring-4 focus:ring-indigo-500/10 focus:border-indigo-500 outline-none resize-none transition-all"
+                    />
+                    <button
+                      onClick={generateWithAi}
+                      disabled={isAiLoading || !prompt.trim()}
+                      className="w-full py-5 bg-[#5046e5] text-white rounded-[28px] font-black uppercase tracking-widest transition-all hover:bg-[#4338ca] disabled:opacity-50 shadow-lg shadow-indigo-100"
                     >
-                      <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M12 4v16m8-8H4" />
-                      </svg>
-                      Add First Stage
+                      {isAiLoading ? 'Synthesizing Roadmap...' : 'Generate Roadmap'}
                     </button>
                   </div>
                 ) : (
-                  <>
-                    {data.stages.map((stage, idx) => (
-                      <StageEditor 
-                        key={stage.id} 
-                        stage={stage} 
-                        index={idx}
-                        isDragging={draggedIndex === idx}
-                        onUpdate={(updates) => updateStage(stage.id, updates)}
-                        onRemove={() => removeStage(stage.id)}
-                        onDragStart={() => handleDragStart(idx)}
-                        onDragOver={(e) => handleDragOver(e, idx)}
-                        onDragEnd={handleDragEnd}
-                      />
-                    ))}
-                    
-                    <button 
-                      onClick={addNewStage}
-                      className="w-full py-12 border-2 border-dashed border-slate-200 rounded-3xl text-slate-400 font-black uppercase tracking-widest text-[10px] hover:border-indigo-300 hover:text-indigo-600 hover:bg-indigo-50/30 transition-all flex items-center justify-center gap-4 group"
-                    >
-                      <div className="w-10 h-10 rounded-2xl bg-slate-50 flex items-center justify-center group-hover:bg-indigo-100 transition-colors">
-                        <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" viewBox="0 0 20 20" fill="currentColor">
-                          <path fillRule="evenodd" d="M10 3a1 1 0 011 1v5h5a1 1 0 110 2h-5v5a1 1 0 11-2 0v-5H4a1 1 0 110-2h5V4a1 1 0 011-1z" clipRule="evenodd" />
-                        </svg>
-                      </div>
-                      Add Milestone to Path
-                    </button>
-                  </>
-                )}
-              </div>
-            </div>
-
-            <div className="lg:col-span-5">
-              <div className="bg-[#f1f3f5] p-6 rounded-[48px] border border-slate-200/50 sticky top-8 flex flex-col min-h-[700px]">
-                <div className="bg-white p-6 rounded-[40px] shadow-sm flex-grow flex flex-col">
-                  <div className="flex bg-[#f8fafc] p-1.5 rounded-[22px] mb-8 border border-slate-100">
-                    <button 
-                      onClick={() => setActiveSidebarTab('ai')}
-                      className={`flex-1 flex items-center justify-center gap-2 py-3.5 rounded-[18px] text-[10px] font-black uppercase tracking-widest transition-all ${activeSidebarTab === 'ai' ? 'bg-white shadow-md text-indigo-600 border border-slate-100' : 'text-slate-400 hover:text-slate-500'}`}
-                    >
-                      <span className="text-xs">✨</span> AI Blueprint
-                    </button>
-                    <button 
-                      onClick={() => setActiveSidebarTab('json')}
-                      className={`flex-1 flex items-center justify-center gap-2 py-3.5 rounded-[18px] text-[10px] font-black uppercase tracking-widest transition-all ${activeSidebarTab === 'json' ? 'bg-white shadow-md text-indigo-600 border border-slate-100' : 'text-slate-400 hover:text-slate-500'}`}
-                    >
-                      <span className="text-xs">{"{ }"}</span> JSON Source
-                    </button>
+                  <div className="flex-grow flex flex-col">
+                    <JsonEditor data={data} onChange={handleJsonChange} />
                   </div>
-                  
-                  {activeSidebarTab === 'ai' ? (
-                    <div className="space-y-6 flex-grow animate-in fade-in slide-in-from-right-4 duration-300">
-                      <div className="flex items-center gap-4 mb-2">
-                        <div className="w-12 h-12 bg-amber-50 rounded-2xl flex items-center justify-center border border-amber-100 shadow-inner">
-                          <span className="text-2xl text-amber-500">✨</span>
-                        </div>
-                        <div>
-                          <h3 className="text-xl font-black text-slate-900 uppercase tracking-tight">AI Assistant</h3>
-                          <p className="text-[10px] text-slate-500 font-black uppercase tracking-widest">Draft in seconds.</p>
-                        </div>
-                      </div>
-                      
-                      <div>
-                        <label htmlFor="ai-prompt" className="block text-[10px] font-black text-slate-500 uppercase tracking-widest mb-3 pl-1">
-                          What are you building?
-                        </label>
-                        <textarea
-                          id="ai-prompt"
-                          value={prompt}
-                          onChange={(e) => setPrompt(e.target.value)}
-                          placeholder="e.g., A comprehensive launch plan for a SaaS startup..."
-                          className="w-full h-56 p-6 text-sm font-semibold bg-slate-50 border border-slate-200 rounded-[28px] focus:ring-4 focus:ring-indigo-500/10 focus:border-indigo-500 outline-none resize-none transition-all placeholder:text-slate-400 text-slate-800"
-                        />
-                      </div>
-                      <button
-                        onClick={generateWithAi}
-                        disabled={isAiLoading || !prompt.trim()}
-                        className="w-full py-5 bg-indigo-600 hover:bg-indigo-700 disabled:bg-slate-100 disabled:text-slate-300 text-white rounded-[24px] font-black uppercase tracking-widest transition-all active:scale-[0.98] flex justify-center items-center gap-3 shadow-xl shadow-indigo-100"
-                      >
-                        {isAiLoading ? (
-                          <div className="flex items-center gap-3">
-                            <svg className="animate-spin h-5 w-5" viewBox="0 0 24 24">
-                              <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-                              <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-                            </svg>
-                            Processing...
-                          </div>
-                        ) : (
-                          <>
-                            Generate Roadmap
-                            <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
-                              <path fillRule="evenodd" d="M10.293 3.293a1 1 0 011.414 0l6 6a1 1 0 010 1.414l-6 6a1 1 0 01-1.414-1.414L14.586 11H3a1 1 0 110-2h11.586l-4.293-4.293a1 1 0 010-1.414z" clipRule="evenodd" />
-                            </svg>
-                          </>
-                        )}
-                      </button>
-                    </div>
-                  ) : (
-                    <div className="flex-grow flex flex-col animate-in fade-in slide-in-from-left-4 duration-300">
-                      <JsonEditor data={data} onChange={handleJsonChange} />
-                      <p className="mt-6 text-[11px] text-slate-400 font-bold leading-relaxed opacity-70">
-                        Pro Tip: Edits here will instantly reflect in the visual roadmap and the editor on the left. You can copy-paste entire roadmaps from other projects here.
-                      </p>
-                    </div>
-                  )}
-                </div>
+                )}
               </div>
             </div>
           </div>
         </div>
       </section>
-
-      <footer className="bg-white border-t border-slate-200 py-12">
-        <div className="container mx-auto px-4 text-center">
-          <div className="inline-flex items-center gap-3 mb-6 bg-slate-50 px-4 py-2 rounded-full border border-slate-100">
-             <div className="w-2.5 h-2.5 rounded-full bg-emerald-500 animate-pulse shadow-[0_0_8px_rgba(16,185,129,0.5)]"></div>
-             <p className="text-slate-500 text-[10px] font-black tracking-widest uppercase">Systems Active</p>
-          </div>
-          <p className="text-slate-400 text-xs font-medium tracking-tight">© 2025 Roadmap Visionary. Design matters.</p>
-        </div>
-      </footer>
     </div>
   );
 };

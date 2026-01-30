@@ -30,72 +30,60 @@ const StageEditor: React.FC<StageEditorProps> = ({
       onDragStart={onDragStart}
       onDragOver={onDragOver}
       onDragEnd={onDragEnd}
-      className={`bg-white p-8 rounded-[32px] border border-slate-200/60 shadow-sm transition-all hover:shadow-xl hover:border-indigo-100 group relative ${isDragging ? 'opacity-40 scale-[0.98] border-indigo-400 border-dashed' : 'opacity-100'}`}
+      className={`bg-white p-8 rounded-[40px] border border-slate-200/40 shadow-sm transition-all relative flex flex-col md:flex-row gap-8 ${isDragging ? 'opacity-40 scale-[0.98]' : 'opacity-100 hover:shadow-xl hover:border-slate-300/50'}`}
     >
-      {/* Drag Handle */}
-      <div className="absolute left-3 top-1/2 -translate-y-1/2 opacity-0 group-hover:opacity-100 transition-opacity cursor-grab active:cursor-grabbing p-1">
-        <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-4 text-slate-300" viewBox="0 0 20 20" fill="currentColor">
-          <path d="M7 7h2v2H7V7zm0 4h2v2H7v-2zm4-4h2v2h-2V7zm0 4h2v2h-2v-2z" />
-          <path d="M7 3h2v2H7V3zm0 12h2v2H7v-2zm4-12h2v2h-2V3zm0 12h2v2h-2v-2z" opacity="0.4" />
-        </svg>
+      {/* Circle Index - Matching screenshot exactly */}
+      <div 
+        className="w-14 h-14 rounded-[22px] flex items-center justify-center text-white font-black text-2xl flex-shrink-0 shadow-lg transition-transform hover:scale-105"
+        style={{ 
+          backgroundColor: stage.color, 
+          boxShadow: `0 10px 20px -4px ${stage.color}44`
+        }}
+      >
+        {index + 1}
       </div>
 
-      <div className="flex items-start gap-6 pl-4">
-        <div 
-          className="w-14 h-14 rounded-[20px] flex items-center justify-center text-white font-black text-2xl flex-shrink-0 shadow-lg select-none transition-transform group-hover:scale-105"
-          style={{ backgroundColor: stage.color, boxShadow: `0 10px 15px -3px ${stage.color}44` }}
-        >
-          {index + 1}
+      <div className="flex-grow flex flex-col gap-5">
+        {/* Title Row */}
+        <div className="flex justify-between items-center">
+          <input
+            value={stage.title}
+            onChange={(e) => onUpdate({ title: e.target.value })}
+            className="font-black text-2xl outline-none w-full bg-transparent placeholder:text-slate-100 tracking-tight"
+            style={{ color: stage.color }}
+            placeholder="Milestone Title"
+          />
+          <button 
+            onClick={onRemove} 
+            className="text-slate-200 hover:text-rose-500 transition-all p-2 rounded-full hover:bg-rose-50"
+            title="Remove Stage"
+          >
+            <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 20 20"><path fillRule="evenodd" d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z" clipRule="evenodd"/></svg>
+          </button>
         </div>
-        
-        <div className="flex-grow space-y-5">
-          <div className="flex gap-4 items-center">
-            <div className="flex-grow">
-              <input
-                type="text"
-                value={stage.title}
-                aria-label={`Stage ${index + 1} title`}
-                onChange={(e) => onUpdate({ title: e.target.value })}
-                className="w-full font-black text-2xl border-b-2 border-transparent focus:border-indigo-500 outline-none pb-1 transition-colors placeholder:text-slate-300 bg-transparent"
-                style={{ color: stage.color }}
-                placeholder="Name your stage..."
-              />
-            </div>
-            <button
-              onClick={onRemove}
-              aria-label={`Remove stage ${index + 1}`}
-              className="text-slate-300 hover:text-rose-500 transition-all opacity-0 group-hover:opacity-100 active:scale-90 p-2 rounded-xl hover:bg-rose-50"
-              title="Remove Stage"
-            >
-              <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
-                <path fillRule="evenodd" d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z" clipRule="evenodd" />
-              </svg>
-            </button>
-          </div>
-          
-          <div className="relative">
-            <textarea
-              value={stage.description}
-              aria-label={`Stage ${index + 1} description`}
-              onChange={(e) => onUpdate({ description: e.target.value })}
-              className="w-full text-[15px] text-slate-700 font-semibold bg-[#f8fafc] border border-slate-100 rounded-2xl p-5 focus:bg-white focus:ring-4 focus:ring-indigo-500/5 focus:border-indigo-500 outline-none resize-none h-28 transition-all placeholder:text-slate-400 leading-relaxed shadow-inner"
-              placeholder="What happens in this stage?"
-            />
-          </div>
 
-          <div className="flex items-center gap-4 pt-2">
-            <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest pl-1">Theme Color</span>
-            <div className="flex gap-2.5 flex-wrap">
-              {THEME_COLORS.map((color) => (
-                <button
-                  key={color}
-                  onClick={() => onUpdate({ color })}
-                  aria-label={`Set stage color to ${color}`}
-                  className={`w-6 h-6 rounded-full ring-offset-2 transition-all hover:scale-125 hover:shadow-lg ${stage.color === color ? 'ring-2 ring-slate-800 scale-110' : 'ring-0 opacity-80'}`}
-                  style={{ backgroundColor: color, boxShadow: stage.color === color ? `0 0 10px ${color}66` : 'none' }}
-                />
-              ))}
-            </div>
+        {/* Description Box - Rounded recessed area from screenshot */}
+        <div className="bg-[#f8fafc] rounded-[28px] p-6 border border-slate-100 shadow-[inset_0_2px_4px_rgba(0,0,0,0.02)]">
+          <textarea
+            value={stage.description}
+            onChange={(e) => onUpdate({ description: e.target.value })}
+            className="w-full text-[13px] font-semibold text-slate-600 bg-transparent outline-none resize-none h-24 leading-relaxed placeholder:text-slate-300"
+            placeholder="What happens in this project phase?"
+          />
+        </div>
+
+        {/* Theme Color Selector - Label matches screenshot */}
+        <div className="flex flex-col md:flex-row md:items-center gap-4">
+          <span className="text-[10px] font-black text-slate-400 uppercase tracking-[0.1em] flex-shrink-0">Theme Color</span>
+          <div className="flex gap-2.5 flex-wrap">
+            {THEME_COLORS.map((color) => (
+              <button
+                key={color}
+                onClick={() => onUpdate({ color })}
+                className={`w-6 h-6 rounded-full transition-all relative ${stage.color === color ? 'scale-110 shadow-md ring-2 ring-slate-800 ring-offset-2' : 'opacity-80 hover:scale-110 hover:opacity-100'}`}
+                style={{ backgroundColor: color }}
+              />
+            ))}
           </div>
         </div>
       </div>
