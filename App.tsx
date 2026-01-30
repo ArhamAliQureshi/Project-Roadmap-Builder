@@ -5,6 +5,7 @@ import { ProjectStage } from './types';
 import { INITIAL_STAGES, THEME_COLORS } from './constants';
 import Timeline from './components/Timeline';
 import StageEditor from './components/StageEditor';
+import JsonEditor from './components/JsonEditor';
 
 const STORAGE_KEY = 'roadmap_visionary_data';
 
@@ -17,8 +18,8 @@ const App: React.FC = () => {
   const [prompt, setPrompt] = useState('');
   const [saveStatus, setSaveStatus] = useState<'idle' | 'saved'>('idle');
   const [draggedIndex, setDraggedIndex] = useState<number | null>(null);
+  const [activeSidebarTab, setActiveSidebarTab] = useState<'ai' | 'json'>('json'); // Set JSON as default per screenshot
 
-  // Clear save status message after 3 seconds
   useEffect(() => {
     if (saveStatus === 'saved') {
       const timer = setTimeout(() => setSaveStatus('idle'), 3000);
@@ -50,7 +51,30 @@ const App: React.FC = () => {
     setSaveStatus('saved');
   };
 
-  // Drag and Drop Logic
+  const exportAsSvg = () => {
+    const svgElement = document.getElementById('roadmap-svg-export');
+    if (!svgElement) return;
+
+    const clonedSvg = svgElement.cloneNode(true) as SVGElement;
+    clonedSvg.setAttribute('xmlns', 'http://www.w3.org/2000/svg');
+    clonedSvg.setAttribute('xmlns:xlink', 'http://www.w3.org/1999/xlink');
+
+    const serializer = new XMLSerializer();
+    let source = serializer.serializeToString(clonedSvg);
+
+    const preface = '<?xml version="1.0" standalone="no"?>\r\n';
+    const svgBlob = new Blob([preface, source], { type: 'image/svg+xml;charset=utf-8' });
+    const svgUrl = URL.createObjectURL(svgBlob);
+    
+    const downloadLink = document.createElement('a');
+    downloadLink.href = svgUrl;
+    downloadLink.download = `project-roadmap-${new Date().toISOString().split('T')[0]}.svg`;
+    document.body.appendChild(downloadLink);
+    downloadLink.click();
+    document.body.removeChild(downloadLink);
+    URL.revokeObjectURL(svgUrl);
+  };
+
   const handleDragStart = (index: number) => {
     setDraggedIndex(index);
   };
@@ -138,8 +162,8 @@ const App: React.FC = () => {
       </main>
 
       <section className="bg-[#f8faff] border-t border-slate-200 p-8 md:p-12">
-        <div className="max-w-6xl mx-auto">
-          <div className="grid grid-cols-1 lg:grid-cols-12 gap-12">
+        <div className="max-w-7xl mx-auto">
+          <div className="grid grid-cols-1 lg:grid-cols-12 gap-12 items-start">
             <div className="lg:col-span-7">
               <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-8 gap-6">
                 <div>
@@ -147,22 +171,33 @@ const App: React.FC = () => {
                   <p className="text-sm text-slate-500 mt-1">Manage the milestones of your timeline.</p>
                 </div>
                 
-                <div className="flex items-center gap-3 bg-white p-1.5 rounded-2xl border border-slate-200 shadow-sm">
+                <div className="flex items-center gap-3">
+                  <button 
+                    onClick={exportAsSvg}
+                    disabled={stages.length === 0}
+                    className="flex items-center gap-2 px-5 py-2.5 bg-white text-slate-700 rounded-xl transition-all border border-slate-200 shadow-sm hover:shadow-md active:scale-95 disabled:opacity-50"
+                  >
+                    <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
+                    </svg>
+                    <span className="font-bold text-[11px] uppercase tracking-widest">Export SVG</span>
+                  </button>
+
                   <button 
                     onClick={saveToLocalStorage}
-                    className={`flex items-center gap-2 px-6 py-3 rounded-xl transition-all ${saveStatus === 'saved' ? 'bg-emerald-50 text-emerald-600' : 'bg-white hover:bg-slate-50 text-slate-700'}`}
+                    className={`flex items-center gap-2 px-6 py-2.5 rounded-xl transition-all shadow-xl active:scale-95 ${saveStatus === 'saved' ? 'bg-indigo-500 text-white shadow-indigo-200' : 'bg-indigo-600 text-white shadow-[0_10px_20px_-5px_rgba(79,70,229,0.4)]'}`}
                   >
                     <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" />
                     </svg>
-                    <span className="font-extrabold text-sm uppercase tracking-tight">
+                    <span className="font-black text-[11px] uppercase tracking-widest">
                       {saveStatus === 'saved' ? 'Saved' : 'Save Roadmap'}
                     </span>
                   </button>
                 </div>
               </div>
               
-              <div className="space-y-4 max-h-[700px] overflow-y-auto pr-4 custom-scrollbar">
+              <div className="space-y-6 max-h-[900px] overflow-y-auto pr-4 custom-scrollbar">
                 {stages.length === 0 ? (
                   <div className="text-center py-24 border-2 border-dashed border-slate-200 rounded-3xl bg-white flex flex-col items-center">
                     <div className="w-16 h-16 bg-slate-50 rounded-full flex items-center justify-center mb-4">
@@ -199,7 +234,7 @@ const App: React.FC = () => {
                     
                     <button 
                       onClick={addNewStage}
-                      className="w-full py-8 border-2 border-dashed border-slate-200 rounded-3xl text-slate-400 font-black uppercase tracking-widest text-[10px] hover:border-indigo-300 hover:text-indigo-600 hover:bg-indigo-50/30 transition-all flex items-center justify-center gap-4 group"
+                      className="w-full py-12 border-2 border-dashed border-slate-200 rounded-3xl text-slate-400 font-black uppercase tracking-widest text-[10px] hover:border-indigo-300 hover:text-indigo-600 hover:bg-indigo-50/30 transition-all flex items-center justify-center gap-4 group"
                     >
                       <div className="w-10 h-10 rounded-2xl bg-slate-50 flex items-center justify-center group-hover:bg-indigo-100 transition-colors">
                         <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" viewBox="0 0 20 20" fill="currentColor">
@@ -214,52 +249,79 @@ const App: React.FC = () => {
             </div>
 
             <div className="lg:col-span-5">
-              <div className="bg-white p-8 rounded-3xl shadow-sm border border-slate-200 sticky top-8">
-                <div className="flex items-center gap-4 mb-8">
-                  <div className="w-12 h-12 bg-amber-50 rounded-2xl flex items-center justify-center border border-amber-100">
-                    <span className="text-2xl text-amber-500">✨</span>
+              <div className="bg-[#f1f3f5] p-6 rounded-[48px] border border-slate-200/50 sticky top-8 flex flex-col min-h-[700px]">
+                <div className="bg-white p-6 rounded-[40px] shadow-sm flex-grow flex flex-col">
+                  {/* Screenshot-matched Tab Switcher */}
+                  <div className="flex bg-[#f8fafc] p-1.5 rounded-[22px] mb-8 border border-slate-100">
+                    <button 
+                      onClick={() => setActiveSidebarTab('ai')}
+                      className={`flex-1 flex items-center justify-center gap-2 py-3.5 rounded-[18px] text-[10px] font-black uppercase tracking-widest transition-all ${activeSidebarTab === 'ai' ? 'bg-white shadow-md text-indigo-600 border border-slate-100' : 'text-slate-400 hover:text-slate-500'}`}
+                    >
+                      <span className="text-xs">✨</span> AI Blueprint
+                    </button>
+                    <button 
+                      onClick={() => setActiveSidebarTab('json')}
+                      className={`flex-1 flex items-center justify-center gap-2 py-3.5 rounded-[18px] text-[10px] font-black uppercase tracking-widest transition-all ${activeSidebarTab === 'json' ? 'bg-white shadow-md text-indigo-600 border border-slate-100' : 'text-slate-400 hover:text-slate-500'}`}
+                    >
+                      <span className="text-xs">{"{ }"}</span> JSON Source
+                    </button>
                   </div>
-                  <div>
-                    <h3 className="text-xl font-black text-slate-900">AI Blueprint</h3>
-                    <p className="text-xs text-slate-500 font-bold uppercase tracking-wider">Draft in seconds.</p>
-                  </div>
-                </div>
-                
-                <div className="space-y-6">
-                  <div>
-                    <label htmlFor="ai-prompt" className="block text-[10px] font-black text-slate-500 uppercase tracking-widest mb-3">
-                      What are you building?
-                    </label>
-                    <textarea
-                      id="ai-prompt"
-                      value={prompt}
-                      onChange={(e) => setPrompt(e.target.value)}
-                      placeholder="e.g., A comprehensive launch plan for a SaaS startup..."
-                      className="w-full h-48 p-5 text-sm font-semibold bg-slate-50 border border-slate-200 rounded-2xl focus:ring-4 focus:ring-indigo-500/10 focus:border-indigo-500 outline-none resize-none transition-all placeholder:text-slate-400 text-slate-800"
-                    />
-                  </div>
-                  <button
-                    onClick={generateWithAi}
-                    disabled={isAiLoading || !prompt.trim()}
-                    className="w-full py-5 bg-indigo-600 hover:bg-indigo-700 disabled:bg-slate-100 disabled:text-slate-300 text-white rounded-2xl font-black uppercase tracking-tight transition-all active:scale-[0.98] flex justify-center items-center gap-3 shadow-xl shadow-indigo-100"
-                  >
-                    {isAiLoading ? (
-                      <>
-                        <svg className="animate-spin h-5 w-5" viewBox="0 0 24 24">
-                          <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-                          <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-                        </svg>
-                        Planning...
-                      </>
-                    ) : (
-                      <>
-                        Generate Roadmap
-                        <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
-                          <path fillRule="evenodd" d="M10.293 3.293a1 1 0 011.414 0l6 6a1 1 0 010 1.414l-6 6a1 1 0 01-1.414-1.414L14.586 11H3a1 1 0 110-2h11.586l-4.293-4.293a1 1 0 010-1.414z" clipRule="evenodd" />
-                        </svg>
-                      </>
-                    )}
-                  </button>
+                  
+                  {activeSidebarTab === 'ai' ? (
+                    <div className="space-y-6 flex-grow animate-in fade-in slide-in-from-right-4 duration-300">
+                      <div className="flex items-center gap-4 mb-2">
+                        <div className="w-12 h-12 bg-amber-50 rounded-2xl flex items-center justify-center border border-amber-100 shadow-inner">
+                          <span className="text-2xl text-amber-500">✨</span>
+                        </div>
+                        <div>
+                          <h3 className="text-xl font-black text-slate-900 uppercase tracking-tight">AI Assistant</h3>
+                          <p className="text-[10px] text-slate-500 font-black uppercase tracking-widest">Draft in seconds.</p>
+                        </div>
+                      </div>
+                      
+                      <div>
+                        <label htmlFor="ai-prompt" className="block text-[10px] font-black text-slate-500 uppercase tracking-widest mb-3 pl-1">
+                          What are you building?
+                        </label>
+                        <textarea
+                          id="ai-prompt"
+                          value={prompt}
+                          onChange={(e) => setPrompt(e.target.value)}
+                          placeholder="e.g., A comprehensive launch plan for a SaaS startup..."
+                          className="w-full h-56 p-6 text-sm font-semibold bg-slate-50 border border-slate-200 rounded-[28px] focus:ring-4 focus:ring-indigo-500/10 focus:border-indigo-500 outline-none resize-none transition-all placeholder:text-slate-400 text-slate-800"
+                        />
+                      </div>
+                      <button
+                        onClick={generateWithAi}
+                        disabled={isAiLoading || !prompt.trim()}
+                        className="w-full py-5 bg-indigo-600 hover:bg-indigo-700 disabled:bg-slate-100 disabled:text-slate-300 text-white rounded-[24px] font-black uppercase tracking-widest transition-all active:scale-[0.98] flex justify-center items-center gap-3 shadow-xl shadow-indigo-100"
+                      >
+                        {isAiLoading ? (
+                          <div className="flex items-center gap-3">
+                            <svg className="animate-spin h-5 w-5" viewBox="0 0 24 24">
+                              <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                              <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                            </svg>
+                            Processing...
+                          </div>
+                        ) : (
+                          <>
+                            Generate Roadmap
+                            <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
+                              <path fillRule="evenodd" d="M10.293 3.293a1 1 0 011.414 0l6 6a1 1 0 010 1.414l-6 6a1 1 0 01-1.414-1.414L14.586 11H3a1 1 0 110-2h11.586l-4.293-4.293a1 1 0 010-1.414z" clipRule="evenodd" />
+                            </svg>
+                          </>
+                        )}
+                      </button>
+                    </div>
+                  ) : (
+                    <div className="flex-grow flex flex-col animate-in fade-in slide-in-from-left-4 duration-300">
+                      <JsonEditor stages={stages} onChange={setStages} />
+                      <p className="mt-6 text-[11px] text-slate-400 font-bold leading-relaxed opacity-70">
+                        Pro Tip: Edits here will instantly reflect in the visual roadmap and the editor on the left. You can copy-paste entire roadmaps from other projects here.
+                      </p>
+                    </div>
+                  )}
                 </div>
               </div>
             </div>

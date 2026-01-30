@@ -63,9 +63,11 @@ const Timeline: React.FC<TimelineProps> = ({ stages }) => {
   return (
     <div className="relative overflow-visible">
       <svg
+        id="roadmap-svg-export"
         viewBox={`0 0 ${VIEWBOX_WIDTH} ${HEIGHT}`}
         width={VIEWBOX_WIDTH}
         height={HEIGHT}
+        xmlns="http://www.w3.org/2000/svg"
         className="overflow-visible"
         style={{ minWidth: '100%' }}
       >
@@ -75,6 +77,9 @@ const Timeline: React.FC<TimelineProps> = ({ stages }) => {
             <feComposite in="SourceGraphic" in2="blur" operator="over" />
           </filter>
         </defs>
+
+        {/* Background Rectangle for Exports */}
+        <rect width={VIEWBOX_WIDTH} height={HEIGHT} fill="white" />
 
         {/* The Path Shadow/Blur */}
         <path
@@ -149,12 +154,24 @@ const Timeline: React.FC<TimelineProps> = ({ stages }) => {
                 height="240"
                 className="overflow-visible"
               >
-                <div className="flex flex-col items-center text-center p-5 bg-white/95 backdrop-blur-md rounded-2xl border border-slate-200 shadow-xl transition-all">
-                  <h3 className="text-xl font-black text-slate-900 mb-2 uppercase tracking-tight leading-tight">
+                <div 
+                  xmlns="http://www.w3.org/1999/xhtml"
+                  className="flex flex-col items-center text-center p-5 bg-white rounded-2xl border border-slate-200 shadow-xl transition-all"
+                  style={{ 
+                    backgroundColor: 'rgba(255, 255, 255, 0.95)',
+                    backdropFilter: 'blur(12px)',
+                    fontFamily: 'Inter, sans-serif',
+                    boxSizing: 'border-box',
+                    borderRadius: '16px',
+                    border: '1px solid #e2e8f0',
+                    boxShadow: '0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04)'
+                  }}
+                >
+                  <h3 style={{ margin: '0 0 8px 0', fontSize: '20px', fontWeight: 900, color: '#0f172a', textTransform: 'uppercase', letterSpacing: '-0.025em', lineHeight: 1.2 }}>
                     {stage.title}
                   </h3>
-                  <div className="h-0.5 w-10 bg-slate-100 mb-3"></div>
-                  <p className="text-slate-800 text-sm leading-relaxed font-bold line-clamp-4">
+                  <div style={{ height: '2px', width: '40px', backgroundColor: '#f1f5f9', marginBottom: '12px' }}></div>
+                  <p style={{ margin: 0, color: '#1e293b', fontSize: '14px', lineHeight: 1.5, fontWeight: 700 }}>
                     {stage.description}
                   </p>
                 </div>
