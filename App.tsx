@@ -86,8 +86,10 @@ const App: React.FC = () => {
   };
 
   const updateStage = (id: string, updates: Partial<ProjectStage>) => {
-    const newStages = data.stages.map(s => s.id === id ? { ...s, ...updates } : s);
-    setData(prev => ({ ...prev, stages: newStages }));
+    setData(prev => {
+      const newStages = prev.stages.map(s => s.id === id ? { ...s, ...updates } : s);
+      return { ...prev, stages: newStages };
+    });
   };
 
   const handleJsonChange = (newData: RoadmapData) => {
@@ -114,6 +116,12 @@ const App: React.FC = () => {
     const exportOnlyElements = clonedSvg.querySelectorAll('.svg-export-only');
     exportOnlyElements.forEach(el => {
       (el as HTMLElement).style.display = 'block';
+    });
+
+    // Remove elements that should not be exported (like the plus button)
+    const noExportElements = clonedSvg.querySelectorAll('.no-export');
+    noExportElements.forEach(el => {
+      el.remove();
     });
 
     const serializer = new XMLSerializer();
@@ -205,7 +213,6 @@ const App: React.FC = () => {
           </div>
           
           <div className="relative w-full max-w-4xl px-4 mb-4 flex justify-center">
-            {/* Split title rendering for the Visionary look in the editable input */}
             <div className="relative inline-block w-full text-center">
               <input 
                 value={data.title}
@@ -233,7 +240,12 @@ const App: React.FC = () => {
       <main className="flex-grow bg-white py-12 relative overflow-hidden">
         <div className="absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-slate-200 to-transparent"></div>
         <div className="overflow-x-auto overflow-y-visible pb-12 custom-scrollbar scroll-smooth">
-          <Timeline data={data} />
+          <Timeline 
+            data={data} 
+            onAddStage={addNewStage} 
+            onUpdateStage={updateStage}
+            onPushHistory={() => pushToHistory(data)}
+          />
         </div>
         <div className="absolute inset-x-0 bottom-0 h-px bg-gradient-to-r from-transparent via-slate-200 to-transparent"></div>
       </main>

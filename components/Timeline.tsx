@@ -1,29 +1,30 @@
 
 import React, { useMemo } from 'react';
-import { RoadmapData } from '../types';
+import { RoadmapData, ProjectStage } from '../types';
 
 interface TimelineProps {
   data: RoadmapData;
+  onAddStage?: () => void;
+  onUpdateStage?: (id: string, updates: Partial<ProjectStage>) => void;
+  onPushHistory?: () => void;
 }
 
-const Timeline: React.FC<TimelineProps> = ({ data }) => {
+const Timeline: React.FC<TimelineProps> = ({ data, onAddStage, onUpdateStage, onPushHistory }) => {
   const STAGES_PER_ROW = 3;
   const STAGE_WIDTH = 450;
-  const ROW_HEIGHT = 500;
-  const ROAD_OFFSET_Y = 150; // Padding for the header in SVG
+  const ROW_HEIGHT = 600; // Increased from 500 to provide more vertical space between roads
+  const ROAD_OFFSET_Y = 220; 
   const HORIZONTAL_PADDING = 100;
 
   const numRows = Math.ceil(data.stages.length / STAGES_PER_ROW);
   const VIEWBOX_WIDTH = STAGES_PER_ROW * STAGE_WIDTH + (HORIZONTAL_PADDING * 2);
   const VIEWBOX_HEIGHT = numRows * ROW_HEIGHT + ROAD_OFFSET_Y + 100;
 
-  // Helper to get coordinates for a stage index
   const getStagePos = (i: number) => {
     const row = Math.floor(i / STAGES_PER_ROW);
     const col = i % STAGES_PER_ROW;
     const isEvenRow = row % 2 === 0;
     
-    // Calculate X based on row direction (L->R or R->L)
     const x = isEvenRow 
       ? (col + 0.5) * STAGE_WIDTH + HORIZONTAL_PADDING
       : (STAGES_PER_ROW - col - 0.5) * STAGE_WIDTH + HORIZONTAL_PADDING;
@@ -37,10 +38,7 @@ const Timeline: React.FC<TimelineProps> = ({ data }) => {
     if (data.stages.length === 0) return '';
     
     const firstPos = getStagePos(0);
-    // Start with a move to the extension point
     let d = `M ${firstPos.x - (firstPos.isEvenRow ? 100 : -100)} ${firstPos.y}`;
-    
-    // Add initial line to first stage
     d += ` L ${firstPos.x} ${firstPos.y}`;
     
     for (let i = 0; i < data.stages.length - 1; i++) {
@@ -48,26 +46,20 @@ const Timeline: React.FC<TimelineProps> = ({ data }) => {
       const next = getStagePos(i + 1);
       
       if (current.row === next.row) {
-        // Horizontal segment within the same row - slightly curved for organic feel
         const cp1x = current.x + (current.isEvenRow ? STAGE_WIDTH / 2 : -STAGE_WIDTH / 2);
         const cp2x = next.x - (next.isEvenRow ? STAGE_WIDTH / 2 : -STAGE_WIDTH / 2);
         d += ` C ${cp1x} ${current.y}, ${cp2x} ${next.y}, ${next.x} ${next.y}`;
       } else {
-        // Row transition segment (U-turn)
         const isRightTurn = current.isEvenRow; 
-        // We use a single cubic Bezier to create a smooth, bulbous 180-turn
-        // The control points are placed far enough out to approximate a circular arc
         const bulgeWidth = STAGE_WIDTH * 0.7; 
         const cp1x = current.x + (isRightTurn ? bulgeWidth : -bulgeWidth);
         const cp2x = next.x + (isRightTurn ? bulgeWidth : -bulgeWidth);
-        
         d += ` C ${cp1x} ${current.y}, ${cp2x} ${next.y}, ${next.x} ${next.y}`;
       }
     }
     
-    // Extend slightly after the last stage
     const lastPos = getStagePos(data.stages.length - 1);
-    d += ` L ${lastPos.x + (lastPos.isEvenRow ? 100 : -100)} ${lastPos.y}`;
+    d += ` L ${lastPos.x + (lastPos.isEvenRow ? 150 : -150)} ${lastPos.y}`;
     
     return d;
   }, [data.stages]);
@@ -85,6 +77,11 @@ const Timeline: React.FC<TimelineProps> = ({ data }) => {
       </div>
     );
   }
+
+  const lastIdx = data.stages.length - 1;
+  const lastPos = getStagePos(lastIdx);
+  const plusX = lastPos.x + (lastPos.isEvenRow ? 150 : -150);
+  const plusY = lastPos.y;
 
   return (
     <div className="relative overflow-visible">
@@ -104,10 +101,8 @@ const Timeline: React.FC<TimelineProps> = ({ data }) => {
           </filter>
         </defs>
 
-        {/* Background Rectangle for Exports */}
         <rect width={VIEWBOX_WIDTH} height={VIEWBOX_HEIGHT} fill="white" />
 
-        {/* Header Section for SVG Export - Hidden in UI via .svg-export-only class */}
         <g transform={`translate(${VIEWBOX_WIDTH / 2}, 60)`} className="svg-export-only">
           <text
             textAnchor="middle"
@@ -124,7 +119,6 @@ const Timeline: React.FC<TimelineProps> = ({ data }) => {
           </text>
         </g>
 
-        {/* The Path Shadow/Blur */}
         <path
           d={pathData}
           fill="none"
@@ -133,7 +127,6 @@ const Timeline: React.FC<TimelineProps> = ({ data }) => {
           strokeLinecap="round"
         />
 
-        {/* The Path Body (Asphalt) */}
         <path
           d={pathData}
           fill="none"
@@ -142,7 +135,6 @@ const Timeline: React.FC<TimelineProps> = ({ data }) => {
           strokeLinecap="round"
         />
 
-        {/* The Path Center Line (Dashed Markings) */}
         <path
           d={pathData}
           fill="none"
@@ -153,19 +145,26 @@ const Timeline: React.FC<TimelineProps> = ({ data }) => {
           opacity="0.5"
         />
 
-        {/* Markers and Labels */}
+        <g 
+          className="no-export cursor-pointer group/plus" 
+          transform={`translate(${plusX}, ${plusY})`}
+          onClick={onAddStage}
+          style={{ pointerEvents: 'all' }}
+        >
+          <circle r="40" fill="#1e293b" stroke="#ffffff33" strokeWidth="2" className="transition-all group-hover/plus:fill-indigo-600" />
+          <path d="M-12 0 L12 0 M0 -12 L0 12" stroke="white" strokeWidth="6" strokeLinecap="round" />
+        </g>
+
         {data.stages.map((stage, i) => {
           const pos = getStagePos(i);
-          const isPeak = i % 2 === 1; // Alternates height locally for visual rhythm
+          const isPeak = i % 2 === 1; 
           
           return (
-            <g key={stage.id} className="cursor-default">
-              {/* Marker Position Indicator */}
+            <g key={stage.id}>
               <g 
                 transform={`translate(${pos.x}, ${pos.y})`} 
-                style={{ transformOrigin: 'center', transformBox: 'fill-box' }}
+                style={{ pointerEvents: 'none' }}
               >
-                {/* Milestone Pin */}
                 <path
                   d="M0 0 C-15 -15 -25 -40 -25 -55 A25 25 0 1 1 25 -55 C25 -40 15 -15 0 0 Z"
                   fill={stage.color}
@@ -182,55 +181,77 @@ const Timeline: React.FC<TimelineProps> = ({ data }) => {
                 </text>
               </g>
 
-              {/* Text Card - Positioned above or below the road based on peak/valley */}
               <foreignObject
-                x={pos.x - 130}
-                y={isPeak ? pos.y + 40 : pos.y - 280}
-                width="260"
-                height="220"
+                x={pos.x - 110}
+                // Refined offsets for 5px visual gap
+                // Bottom cards (isPeak): road edge is +30. Card at +35.
+                // Top cards (!isPeak): Pin top is -80. Card height 170. Card bottom at -85. y = -85 - 170 = -255.
+                y={isPeak ? pos.y + 35 : pos.y - 255}
+                width="220"
+                height="170"
                 className="overflow-visible"
+                style={{ pointerEvents: 'auto' }}
               >
                 <div 
-                  xmlns="http://www.w3.org/1999/xhtml"
                   style={{ 
                     backgroundColor: 'white',
                     fontFamily: 'Inter, sans-serif',
-                    padding: '24px',
-                    borderRadius: '24px',
+                    padding: '16px',
+                    borderRadius: '20px',
                     border: '1px solid #e2e8f0',
-                    boxShadow: '0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04)',
+                    boxShadow: '0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05)',
                     display: 'flex',
                     flexDirection: 'column',
                     alignItems: 'flex-start',
                     textAlign: 'left',
-                    width: '260px',
-                    boxSizing: 'border-box'
+                    width: '220px',
+                    height: '170px',
+                    boxSizing: 'border-box',
+                    overflow: 'hidden'
                   }}
                 >
-                  <h3 style={{ 
-                    margin: '0 0 16px 0', 
-                    fontSize: '18px', 
-                    fontWeight: 900, 
-                    color: '#0f172a', 
-                    textTransform: 'uppercase', 
-                    letterSpacing: '0.05em', 
-                    lineHeight: 1,
-                    width: '100%',
-                    borderBottom: '1px solid #f1f5f9',
-                    paddingBottom: '12px'
-                  }}>
-                    {stage.title}
-                  </h3>
-                  <p style={{ 
-                    margin: 0, 
-                    color: '#1e293b', 
-                    fontSize: '13px', 
-                    lineHeight: 1.6, 
-                    fontWeight: 700,
-                    width: '100%'
-                  }}>
-                    {stage.description}
-                  </p>
+                  <input
+                    value={stage.title}
+                    onFocus={onPushHistory}
+                    onChange={(e) => onUpdateStage?.(stage.id, { title: e.target.value })}
+                    style={{ 
+                      margin: '0 0 10px 0', 
+                      fontSize: '15px', 
+                      fontWeight: 900, 
+                      color: '#0f172a', 
+                      textTransform: 'uppercase', 
+                      letterSpacing: '0.05em', 
+                      lineHeight: 1.2,
+                      width: '100%',
+                      border: 'none',
+                      borderBottom: '1px solid #f1f5f9',
+                      paddingBottom: '4px',
+                      background: 'transparent',
+                      outline: 'none',
+                      fontFamily: 'inherit'
+                    }}
+                    placeholder="TITLE"
+                  />
+                  <textarea
+                    value={stage.description}
+                    onFocus={onPushHistory}
+                    onChange={(e) => onUpdateStage?.(stage.id, { description: e.target.value })}
+                    style={{ 
+                      margin: 0, 
+                      color: '#475569', 
+                      fontSize: '12px', 
+                      lineHeight: 1.5, 
+                      fontWeight: 600,
+                      width: '100%',
+                      flex: 1,
+                      border: 'none',
+                      background: 'transparent',
+                      outline: 'none',
+                      resize: 'none',
+                      fontFamily: 'inherit'
+                    }}
+                    placeholder="Brief description..."
+                  />
                 </div>
               </foreignObject>
             </g>
