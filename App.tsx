@@ -205,20 +205,20 @@ const App: React.FC = () => {
 
   return (
     <div className="min-h-screen flex flex-col bg-[#fcfcfd] text-slate-900 selection:bg-indigo-100">
-      <header className="bg-white border-b border-slate-200 pt-16 pb-12 text-center relative overflow-hidden group">
+      <header className="bg-white border-b border-slate-200 pt-12 pb-8 text-center relative overflow-hidden group">
         <div className="absolute inset-0 bg-[radial-gradient(#e2e8f0_1px,transparent_1px)] [background-size:16px_16px] opacity-40"></div>
         <div className="container mx-auto px-4 relative z-10 flex flex-col items-center">
-          <div className="inline-block px-3 py-1 mb-6 text-xs font-bold tracking-widest text-indigo-600 uppercase bg-indigo-50 rounded-full">
+          <div className="inline-block px-3 py-1 mb-4 text-xs font-bold tracking-widest text-indigo-600 uppercase bg-indigo-50 rounded-full">
             Strategic Planning
           </div>
           
-          <div className="relative w-full max-w-4xl px-4 mb-4 flex justify-center">
+          <div className="relative w-full max-w-4xl px-4 mb-2 flex justify-center">
             <div className="relative inline-block w-full text-center">
               <input 
                 value={data.title}
                 onChange={(e) => updateHeader({ title: e.target.value })}
                 onFocus={() => pushToHistory(data)}
-                className="w-full text-4xl md:text-6xl font-extrabold tracking-tight text-slate-900 bg-transparent text-center border-none outline-none focus:ring-0 placeholder:text-slate-200"
+                className="w-full text-4xl md:text-6xl font-black tracking-tight text-slate-900 bg-transparent text-center border-none outline-none focus:ring-0 placeholder:text-slate-200"
                 placeholder="Roadmap Title"
               />
             </div>
@@ -237,7 +237,7 @@ const App: React.FC = () => {
         </div>
       </header>
 
-      <main className="flex-grow bg-white py-12 relative overflow-hidden">
+      <main className="flex-grow bg-white py-6 relative overflow-hidden">
         <div className="absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-slate-200 to-transparent"></div>
         <div className="overflow-x-auto overflow-y-visible pb-12 custom-scrollbar scroll-smooth">
           <Timeline 

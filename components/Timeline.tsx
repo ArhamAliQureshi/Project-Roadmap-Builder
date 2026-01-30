@@ -12,13 +12,13 @@ interface TimelineProps {
 const Timeline: React.FC<TimelineProps> = ({ data, onAddStage, onUpdateStage, onPushHistory }) => {
   const STAGES_PER_ROW = 3;
   const STAGE_WIDTH = 450;
-  const ROW_HEIGHT = 600; // Increased from 500 to provide more vertical space between roads
-  const ROAD_OFFSET_Y = 220; 
+  const ROW_HEIGHT = 500; // Reduced to pull road higher
+  const ROAD_OFFSET_Y = 140; // Adjusted for better header spacing
   const HORIZONTAL_PADDING = 100;
 
   const numRows = Math.ceil(data.stages.length / STAGES_PER_ROW);
   const VIEWBOX_WIDTH = STAGES_PER_ROW * STAGE_WIDTH + (HORIZONTAL_PADDING * 2);
-  const VIEWBOX_HEIGHT = numRows * ROW_HEIGHT + ROAD_OFFSET_Y + 100;
+  const VIEWBOX_HEIGHT = numRows * ROW_HEIGHT + ROAD_OFFSET_Y + 50;
 
   const getStagePos = (i: number) => {
     const row = Math.floor(i / STAGES_PER_ROW);
@@ -119,6 +119,7 @@ const Timeline: React.FC<TimelineProps> = ({ data, onAddStage, onUpdateStage, on
           </text>
         </g>
 
+        {/* Road Base */}
         <path
           d={pathData}
           fill="none"
@@ -127,22 +128,24 @@ const Timeline: React.FC<TimelineProps> = ({ data, onAddStage, onUpdateStage, on
           strokeLinecap="round"
         />
 
+        {/* Main Road Surface - Darker as per screenshot */}
         <path
           d={pathData}
           fill="none"
           stroke="#1e293b"
-          strokeWidth="60"
+          strokeWidth="65"
           strokeLinecap="round"
         />
 
+        {/* Road Dashes - Slightly more visible */}
         <path
           d={pathData}
           fill="none"
           stroke="white"
-          strokeWidth="4"
-          strokeDasharray="15, 25"
+          strokeWidth="5"
+          strokeDasharray="25, 30"
           strokeLinecap="round"
-          opacity="0.5"
+          opacity="0.4"
         />
 
         <g 
@@ -161,6 +164,7 @@ const Timeline: React.FC<TimelineProps> = ({ data, onAddStage, onUpdateStage, on
           
           return (
             <g key={stage.id}>
+              {/* Pin Marker */}
               <g 
                 transform={`translate(${pos.x}, ${pos.y})`} 
                 style={{ pointerEvents: 'none' }}
@@ -181,11 +185,10 @@ const Timeline: React.FC<TimelineProps> = ({ data, onAddStage, onUpdateStage, on
                 </text>
               </g>
 
+              {/* Stage Detail Card */}
               <foreignObject
                 x={pos.x - 110}
-                // Refined offsets for 5px visual gap
-                // Bottom cards (isPeak): road edge is +30. Card at +35.
-                // Top cards (!isPeak): Pin top is -80. Card height 170. Card bottom at -85. y = -85 - 170 = -255.
+                // Refined offsets for visual closeness to the road
                 y={isPeak ? pos.y + 35 : pos.y - 255}
                 width="220"
                 height="170"
