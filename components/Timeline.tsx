@@ -1,52 +1,78 @@
 
 import React, { useMemo } from 'react';
-import { ProjectStage } from '../types';
+import { RoadmapData } from '../types';
 
 interface TimelineProps {
-  stages: ProjectStage[];
+  data: RoadmapData;
 }
 
-const Timeline: React.FC<TimelineProps> = ({ stages }) => {
-  const STAGE_WIDTH = 380;
-  const HEIGHT = 600;
-  const VIEWBOX_WIDTH = Math.max(1200, (stages.length + 0.5) * STAGE_WIDTH);
+const Timeline: React.FC<TimelineProps> = ({ data }) => {
+  const STAGES_PER_ROW = 3;
+  const STAGE_WIDTH = 450;
+  const ROW_HEIGHT = 500;
+  const ROAD_OFFSET_Y = 150; // Padding for the header in SVG
+  const HORIZONTAL_PADDING = 100;
+
+  const numRows = Math.ceil(data.stages.length / STAGES_PER_ROW);
+  const VIEWBOX_WIDTH = STAGES_PER_ROW * STAGE_WIDTH + (HORIZONTAL_PADDING * 2);
+  const VIEWBOX_HEIGHT = numRows * ROW_HEIGHT + ROAD_OFFSET_Y + 100;
+
+  // Helper to get coordinates for a stage index
+  const getStagePos = (i: number) => {
+    const row = Math.floor(i / STAGES_PER_ROW);
+    const col = i % STAGES_PER_ROW;
+    const isEvenRow = row % 2 === 0;
+    
+    // Calculate X based on row direction (L->R or R->L)
+    const x = isEvenRow 
+      ? (col + 0.5) * STAGE_WIDTH + HORIZONTAL_PADDING
+      : (STAGES_PER_ROW - col - 0.5) * STAGE_WIDTH + HORIZONTAL_PADDING;
+    
+    const y = row * ROW_HEIGHT + ROW_HEIGHT / 2 + ROAD_OFFSET_Y;
+    
+    return { x, y, row, col, isEvenRow };
+  };
 
   const pathData = useMemo(() => {
-    if (stages.length === 0) return '';
+    if (data.stages.length === 0) return '';
     
-    const centerY = HEIGHT / 2;
-    const amplitude = 150;
+    const firstPos = getStagePos(0);
+    // Start with a move to the extension point
+    let d = `M ${firstPos.x - (firstPos.isEvenRow ? 100 : -100)} ${firstPos.y}`;
     
-    let d = `M 0 ${centerY}`;
+    // Add initial line to first stage
+    d += ` L ${firstPos.x} ${firstPos.y}`;
     
-    for (let i = 0; i < stages.length + 1; i++) {
-      const xStart = i * STAGE_WIDTH;
-      const xEnd = (i + 1) * STAGE_WIDTH;
-      const xMid = xStart + STAGE_WIDTH / 2;
+    for (let i = 0; i < data.stages.length - 1; i++) {
+      const current = getStagePos(i);
+      const next = getStagePos(i + 1);
       
-      const isPeak = i % 2 === 1;
-      const targetY = isPeak ? centerY - amplitude : centerY + amplitude;
-      
-      const cp1x = xStart + STAGE_WIDTH * 0.3;
-      const cp1y = i === 0 ? centerY : (i % 2 === 0 ? centerY - amplitude : centerY + amplitude);
-      
-      const cp2x = xMid - STAGE_WIDTH * 0.3;
-      const cp2y = targetY;
-
-      d += ` C ${cp1x} ${cp1y}, ${cp2x} ${cp2y}, ${xMid} ${targetY}`;
-
-      const cp3x = xMid + STAGE_WIDTH * 0.3;
-      const cp3y = targetY;
-      const cp4x = xEnd - STAGE_WIDTH * 0.3;
-      const cp4y = centerY;
-      
-      d += ` C ${cp3x} ${cp3y}, ${cp4x} ${centerY}, ${xEnd} ${centerY}`;
+      if (current.row === next.row) {
+        // Horizontal segment within the same row - slightly curved for organic feel
+        const cp1x = current.x + (current.isEvenRow ? STAGE_WIDTH / 2 : -STAGE_WIDTH / 2);
+        const cp2x = next.x - (next.isEvenRow ? STAGE_WIDTH / 2 : -STAGE_WIDTH / 2);
+        d += ` C ${cp1x} ${current.y}, ${cp2x} ${next.y}, ${next.x} ${next.y}`;
+      } else {
+        // Row transition segment (U-turn)
+        const isRightTurn = current.isEvenRow; 
+        // We use a single cubic Bezier to create a smooth, bulbous 180-turn
+        // The control points are placed far enough out to approximate a circular arc
+        const bulgeWidth = STAGE_WIDTH * 0.7; 
+        const cp1x = current.x + (isRightTurn ? bulgeWidth : -bulgeWidth);
+        const cp2x = next.x + (isRightTurn ? bulgeWidth : -bulgeWidth);
+        
+        d += ` C ${cp1x} ${current.y}, ${cp2x} ${next.y}, ${next.x} ${next.y}`;
+      }
     }
     
+    // Extend slightly after the last stage
+    const lastPos = getStagePos(data.stages.length - 1);
+    d += ` L ${lastPos.x + (lastPos.isEvenRow ? 100 : -100)} ${lastPos.y}`;
+    
     return d;
-  }, [stages, STAGE_WIDTH]);
+  }, [data.stages]);
 
-  if (stages.length === 0) {
+  if (data.stages.length === 0) {
     return (
       <div className="flex flex-col items-center justify-center min-h-[400px] text-slate-300">
         <div className="w-20 h-20 rounded-full border-4 border-slate-100 flex items-center justify-center mb-6">
@@ -64,9 +90,9 @@ const Timeline: React.FC<TimelineProps> = ({ stages }) => {
     <div className="relative overflow-visible">
       <svg
         id="roadmap-svg-export"
-        viewBox={`0 0 ${VIEWBOX_WIDTH} ${HEIGHT}`}
+        viewBox={`0 0 ${VIEWBOX_WIDTH} ${VIEWBOX_HEIGHT}`}
         width={VIEWBOX_WIDTH}
-        height={HEIGHT}
+        height={VIEWBOX_HEIGHT}
         xmlns="http://www.w3.org/2000/svg"
         className="overflow-visible"
         style={{ minWidth: '100%' }}
@@ -79,7 +105,24 @@ const Timeline: React.FC<TimelineProps> = ({ stages }) => {
         </defs>
 
         {/* Background Rectangle for Exports */}
-        <rect width={VIEWBOX_WIDTH} height={HEIGHT} fill="white" />
+        <rect width={VIEWBOX_WIDTH} height={VIEWBOX_HEIGHT} fill="white" />
+
+        {/* Header Section for SVG Export - Hidden in UI via .svg-export-only class */}
+        <g transform={`translate(${VIEWBOX_WIDTH / 2}, 60)`} className="svg-export-only">
+          <text
+            textAnchor="middle"
+            style={{ fontFamily: 'Inter, sans-serif', fontWeight: 900, fontSize: '48px', fill: '#0f172a' }}
+          >
+            {data.title}
+          </text>
+          <text
+            y="50"
+            textAnchor="middle"
+            style={{ fontFamily: 'Inter, sans-serif', fontWeight: 500, fontSize: '18px', fill: '#64748b' }}
+          >
+            {data.description}
+          </text>
+        </g>
 
         {/* The Path Shadow/Blur */}
         <path
@@ -97,7 +140,6 @@ const Timeline: React.FC<TimelineProps> = ({ stages }) => {
           stroke="#1e293b"
           strokeWidth="60"
           strokeLinecap="round"
-          className="transition-all duration-700 ease-in-out"
         />
 
         {/* The Path Center Line (Dashed Markings) */}
@@ -112,25 +154,21 @@ const Timeline: React.FC<TimelineProps> = ({ stages }) => {
         />
 
         {/* Markers and Labels */}
-        {stages.map((stage, i) => {
-          const x = i * STAGE_WIDTH + STAGE_WIDTH / 2;
-          const isPeak = i % 2 === 1;
-          const centerY = HEIGHT / 2;
-          const amplitude = 150;
-          const y = isPeak ? centerY - amplitude : centerY + amplitude;
+        {data.stages.map((stage, i) => {
+          const pos = getStagePos(i);
+          const isPeak = i % 2 === 1; // Alternates height locally for visual rhythm
           
           return (
             <g key={stage.id} className="cursor-default">
               {/* Marker Position Indicator */}
               <g 
-                transform={`translate(${x}, ${y})`} 
+                transform={`translate(${pos.x}, ${pos.y})`} 
                 style={{ transformOrigin: 'center', transformBox: 'fill-box' }}
               >
                 {/* Milestone Pin */}
                 <path
                   d="M0 0 C-15 -15 -25 -40 -25 -55 A25 25 0 1 1 25 -55 C25 -40 15 -15 0 0 Z"
                   fill={stage.color}
-                  style={{ filter: 'drop-shadow(0 8px 6px rgba(0,0,0,0.2))' }}
                 />
                 <circle cx="0" cy="-55" r="14" fill="white" />
                 <text
@@ -144,12 +182,12 @@ const Timeline: React.FC<TimelineProps> = ({ stages }) => {
                 </text>
               </g>
 
-              {/* Text Card - Matches the screenshot with left alignment and proper padding */}
+              {/* Text Card - Positioned above or below the road based on peak/valley */}
               <foreignObject
-                x={x - 130}
-                y={isPeak ? y + 40 : y - 260}
+                x={pos.x - 130}
+                y={isPeak ? pos.y + 40 : pos.y - 280}
                 width="260"
-                height="200"
+                height="220"
                 className="overflow-visible"
               >
                 <div 

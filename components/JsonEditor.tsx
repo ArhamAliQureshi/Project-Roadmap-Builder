@@ -1,13 +1,13 @@
 
 import React, { useState, useEffect, useRef } from 'react';
-import { ProjectStage } from '../types';
+import { RoadmapData } from '../types';
 
 interface JsonEditorProps {
-  stages: ProjectStage[];
-  onChange: (newStages: ProjectStage[]) => void;
+  data: RoadmapData;
+  onChange: (newData: RoadmapData) => void;
 }
 
-const JsonEditor: React.FC<JsonEditorProps> = ({ stages, onChange }) => {
+const JsonEditor: React.FC<JsonEditorProps> = ({ data, onChange }) => {
   const [localValue, setLocalValue] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [isFocused, setIsFocused] = useState(false);
@@ -16,10 +16,10 @@ const JsonEditor: React.FC<JsonEditorProps> = ({ stages, onChange }) => {
 
   useEffect(() => {
     if (!isFocused) {
-      setLocalValue(JSON.stringify(stages, null, 2));
+      setLocalValue(JSON.stringify(data, null, 2));
       setError(null);
     }
-  }, [stages, isFocused]);
+  }, [data, isFocused]);
 
   const handleInputChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
     const newValue = e.target.value;
@@ -27,21 +27,20 @@ const JsonEditor: React.FC<JsonEditorProps> = ({ stages, onChange }) => {
 
     try {
       const parsed = JSON.parse(newValue);
-      if (Array.isArray(parsed)) {
-        const isValid = parsed.every(item => 
-          typeof item === 'object' && 
-          item !== null && 
-          typeof item.title === 'string'
-        );
+      if (typeof parsed === 'object' && parsed !== null) {
+        const isValid = 
+          typeof parsed.title === 'string' && 
+          typeof parsed.description === 'string' && 
+          Array.isArray(parsed.stages);
         
         if (isValid) {
           onChange(parsed);
           setError(null);
         } else {
-          setError('Invalid stage structure.');
+          setError('Invalid roadmap structure.');
         }
       } else {
-        setError('Must be a JSON array.');
+        setError('Must be a JSON object.');
       }
     } catch (err) {
       setError('Invalid JSON syntax');
@@ -73,7 +72,7 @@ const JsonEditor: React.FC<JsonEditorProps> = ({ stages, onChange }) => {
 
   return (
     <div className="flex flex-col flex-grow">
-      {/* Screenshot-matched Header */}
+      {/* Header Section */}
       <div className="flex items-center justify-between mb-4 px-2">
         <div className="flex items-center gap-2.5">
           <div className={`w-2 h-2 rounded-full transition-all duration-500 ${isFocused ? 'bg-indigo-500 shadow-[0_0_8px_rgba(99,102,241,0.6)] animate-pulse' : 'bg-slate-400'}`}></div>
@@ -115,7 +114,6 @@ const JsonEditor: React.FC<JsonEditorProps> = ({ stages, onChange }) => {
           spellCheck={false}
         />
 
-        {/* Footer Icon */}
         <div className="absolute bottom-6 right-6 opacity-10 pointer-events-none group-hover:opacity-40 transition-opacity">
           <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 text-indigo-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 20l4-16m4 4l4 4-4 4M6 16l-4-4 4-4" />

@@ -1,29 +1,44 @@
 
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { GoogleGenAI, Type } from "@google/genai";
-import { ProjectStage } from './types';
+import { ProjectStage, RoadmapData } from './types';
 import { INITIAL_STAGES, THEME_COLORS } from './constants';
 import Timeline from './components/Timeline';
 import StageEditor from './components/StageEditor';
 import JsonEditor from './components/JsonEditor';
 
-const STORAGE_KEY = 'roadmap_visionary_data';
+const STORAGE_KEY = 'roadmap_visionary_data_v2';
 const MAX_HISTORY = 30;
 
+const DEFAULT_ROADMAP: RoadmapData = {
+  title: 'Roadmap Visionary',
+  description: 'Visualize your project journey with precision. Add stages manually or let AI draft your entire strategy.',
+  stages: INITIAL_STAGES
+};
+
 const App: React.FC = () => {
-  const [stages, setStages] = useState<ProjectStage[]>(() => {
+  const [data, setData] = useState<RoadmapData>(() => {
     const saved = localStorage.getItem(STORAGE_KEY);
-    return saved ? JSON.parse(saved) : INITIAL_STAGES;
+    if (saved) {
+      try {
+        const parsed = JSON.parse(saved);
+        if (Array.isArray(parsed)) {
+          return { ...DEFAULT_ROADMAP, stages: parsed };
+        }
+        return parsed;
+      } catch (e) {
+        return DEFAULT_ROADMAP;
+      }
+    }
+    return DEFAULT_ROADMAP;
   });
-  const [history, setHistory] = useState<ProjectStage[][]>([]);
+
+  const [history, setHistory] = useState<RoadmapData[]>([]);
   const [isAiLoading, setIsAiLoading] = useState(false);
   const [prompt, setPrompt] = useState('');
   const [saveStatus, setSaveStatus] = useState<'idle' | 'saved'>('idle');
   const [draggedIndex, setDraggedIndex] = useState<number | null>(null);
   const [activeSidebarTab, setActiveSidebarTab] = useState<'ai' | 'json'>('json');
-
-  // Ref to track state for history without triggering effects
-  const lastStagesRef = useRef<ProjectStage[]>(stages);
 
   useEffect(() => {
     if (saveStatus === 'saved') {
@@ -32,7 +47,7 @@ const App: React.FC = () => {
     }
   }, [saveStatus]);
 
-  const pushToHistory = useCallback((currentState: ProjectStage[]) => {
+  const pushToHistory = useCallback((currentState: RoadmapData) => {
     setHistory(prev => {
       const newHistory = [...prev, JSON.parse(JSON.stringify(currentState))];
       if (newHistory.length > MAX_HISTORY) return newHistory.slice(1);
@@ -44,52 +59,46 @@ const App: React.FC = () => {
     if (history.length === 0) return;
     const previousState = history[history.length - 1];
     setHistory(prev => prev.slice(0, -1));
-    setStages(previousState);
-    lastStagesRef.current = previousState;
+    setData(previousState);
+  };
+
+  const updateHeader = (updates: Partial<Pick<RoadmapData, 'title' | 'description'>>) => {
+    setData(prev => ({ ...prev, ...updates }));
   };
 
   const addNewStage = () => {
-    pushToHistory(stages);
+    pushToHistory(data);
     const newId = Math.random().toString(36).substr(2, 9);
-    const color = THEME_COLORS[stages.length % THEME_COLORS.length];
-    const newStages = [...stages, { 
+    const color = THEME_COLORS[data.stages.length % THEME_COLORS.length];
+    const newStages = [...data.stages, { 
       id: newId, 
       title: 'New Milestone', 
       description: 'Describe what happens in this stage of your journey.', 
       color 
     }];
-    setStages(newStages);
-    lastStagesRef.current = newStages;
+    setData(prev => ({ ...prev, stages: newStages }));
   };
 
   const removeStage = (id: string) => {
-    pushToHistory(stages);
-    const newStages = stages.filter(s => s.id !== id);
-    setStages(newStages);
-    lastStagesRef.current = newStages;
+    pushToHistory(data);
+    const newStages = data.stages.filter(s => s.id !== id);
+    setData(prev => ({ ...prev, stages: newStages }));
   };
 
   const updateStage = (id: string, updates: Partial<ProjectStage>) => {
-    // For typing/updates, we check if it's a "significant" start of a change
-    // Usually undo in editors captures the state before the first character or on blur
-    // To keep it simple but effective, we'll push to history if it's the first edit in a sequence
-    // Note: In a production app, we might debounce this.
-    const newStages = stages.map(s => s.id === id ? { ...s, ...updates } : s);
-    setStages(newStages);
-    lastStagesRef.current = newStages;
+    const newStages = data.stages.map(s => s.id === id ? { ...s, ...updates } : s);
+    setData(prev => ({ ...prev, stages: newStages }));
   };
 
-  const handleJsonChange = (newStages: ProjectStage[]) => {
-    // We only push to history if the new state is actually different
-    if (JSON.stringify(newStages) !== JSON.stringify(stages)) {
-      pushToHistory(stages);
-      setStages(newStages);
-      lastStagesRef.current = newStages;
+  const handleJsonChange = (newData: RoadmapData) => {
+    if (JSON.stringify(newData) !== JSON.stringify(data)) {
+      pushToHistory(data);
+      setData(newData);
     }
   };
 
   const saveToLocalStorage = () => {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(stages));
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
     setSaveStatus('saved');
   };
 
@@ -101,6 +110,12 @@ const App: React.FC = () => {
     clonedSvg.setAttribute('xmlns', 'http://www.w3.org/2000/svg');
     clonedSvg.setAttribute('xmlns:xlink', 'http://www.w3.org/1999/xlink');
 
+    // Reveal the hidden header elements specifically for the export
+    const exportOnlyElements = clonedSvg.querySelectorAll('.svg-export-only');
+    exportOnlyElements.forEach(el => {
+      (el as HTMLElement).style.display = 'block';
+    });
+
     const serializer = new XMLSerializer();
     let source = serializer.serializeToString(clonedSvg);
 
@@ -110,7 +125,7 @@ const App: React.FC = () => {
     
     const downloadLink = document.createElement('a');
     downloadLink.href = svgUrl;
-    downloadLink.download = `project-roadmap-${new Date().toISOString().split('T')[0]}.svg`;
+    downloadLink.download = `${data.title.toLowerCase().replace(/\s+/g, '-')}-${new Date().toISOString().split('T')[0]}.svg`;
     document.body.appendChild(downloadLink);
     downloadLink.click();
     document.body.removeChild(downloadLink);
@@ -118,7 +133,7 @@ const App: React.FC = () => {
   };
 
   const handleDragStart = (index: number) => {
-    pushToHistory(stages);
+    pushToHistory(data);
     setDraggedIndex(index);
   };
 
@@ -126,15 +141,14 @@ const App: React.FC = () => {
     e.preventDefault();
     if (draggedIndex === null || draggedIndex === index) return;
 
-    const newStages = [...stages];
+    const newStages = [...data.stages];
     const item = newStages[draggedIndex];
     newStages.splice(draggedIndex, 1);
     newStages.splice(index, 0, item);
     
     setDraggedIndex(index);
-    setStages(newStages);
-    lastStagesRef.current = newStages;
-  }, [draggedIndex, stages]);
+    setData(prev => ({ ...prev, stages: newStages }));
+  }, [draggedIndex, data.stages]);
 
   const handleDragEnd = () => {
     setDraggedIndex(null);
@@ -164,16 +178,15 @@ const App: React.FC = () => {
         }
       });
 
-      const data = JSON.parse(response.text);
-      pushToHistory(stages);
-      const newStages = data.map((item: any, index: number) => ({
+      const parsedStages = JSON.parse(response.text);
+      pushToHistory(data);
+      const newStages = parsedStages.map((item: any, index: number) => ({
         id: Math.random().toString(36).substr(2, 9),
         title: item.title,
         description: item.description,
         color: THEME_COLORS[index % THEME_COLORS.length]
       }));
-      setStages(newStages);
-      lastStagesRef.current = newStages;
+      setData(prev => ({ ...prev, stages: newStages }));
       setPrompt('');
     } catch (error) {
       console.error('Error generating stages:', error);
@@ -184,25 +197,43 @@ const App: React.FC = () => {
 
   return (
     <div className="min-h-screen flex flex-col bg-[#fcfcfd] text-slate-900 selection:bg-indigo-100">
-      <header className="bg-white border-b border-slate-200 pt-16 pb-12 text-center relative overflow-hidden">
+      <header className="bg-white border-b border-slate-200 pt-16 pb-12 text-center relative overflow-hidden group">
         <div className="absolute inset-0 bg-[radial-gradient(#e2e8f0_1px,transparent_1px)] [background-size:16px_16px] opacity-40"></div>
-        <div className="container mx-auto px-4 relative z-10">
+        <div className="container mx-auto px-4 relative z-10 flex flex-col items-center">
           <div className="inline-block px-3 py-1 mb-6 text-xs font-bold tracking-widest text-indigo-600 uppercase bg-indigo-50 rounded-full">
             Strategic Planning
           </div>
-          <h1 className="text-4xl md:text-6xl font-extrabold tracking-tight text-slate-900 mb-4">
-            Roadmap <span className="text-indigo-600">Visionary</span>
-          </h1>
-          <p className="max-w-2xl mx-auto text-lg text-slate-500 font-medium">
-            Visualize your project journey with precision. Add stages manually or let AI draft your entire strategy.
-          </p>
+          
+          <div className="relative w-full max-w-4xl px-4 mb-4 flex justify-center">
+            {/* Split title rendering for the Visionary look in the editable input */}
+            <div className="relative inline-block w-full text-center">
+              <input 
+                value={data.title}
+                onChange={(e) => updateHeader({ title: e.target.value })}
+                onFocus={() => pushToHistory(data)}
+                className="w-full text-4xl md:text-6xl font-extrabold tracking-tight text-slate-900 bg-transparent text-center border-none outline-none focus:ring-0 placeholder:text-slate-200"
+                placeholder="Roadmap Title"
+              />
+            </div>
+          </div>
+
+          <div className="relative w-full max-w-2xl px-4">
+            <textarea 
+              value={data.description}
+              onChange={(e) => updateHeader({ description: e.target.value })}
+              onFocus={() => pushToHistory(data)}
+              rows={2}
+              className="w-full text-lg text-slate-500 font-medium bg-transparent text-center border-none outline-none focus:ring-0 resize-none placeholder:text-slate-200"
+              placeholder="Visualize your project journey with precision..."
+            />
+          </div>
         </div>
       </header>
 
       <main className="flex-grow bg-white py-12 relative overflow-hidden">
         <div className="absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-slate-200 to-transparent"></div>
         <div className="overflow-x-auto overflow-y-visible pb-12 custom-scrollbar scroll-smooth">
-          <Timeline stages={stages} />
+          <Timeline data={data} />
         </div>
         <div className="absolute inset-x-0 bottom-0 h-px bg-gradient-to-r from-transparent via-slate-200 to-transparent"></div>
       </main>
@@ -232,7 +263,7 @@ const App: React.FC = () => {
 
                   <button 
                     onClick={exportAsSvg}
-                    disabled={stages.length === 0}
+                    disabled={data.stages.length === 0}
                     className="flex items-center gap-2 px-5 py-2.5 bg-white text-slate-700 rounded-xl transition-all border border-slate-200 shadow-sm hover:shadow-md active:scale-95 disabled:opacity-50"
                   >
                     <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -256,7 +287,7 @@ const App: React.FC = () => {
               </div>
               
               <div className="space-y-6 max-h-[900px] overflow-y-auto pr-4 custom-scrollbar">
-                {stages.length === 0 ? (
+                {data.stages.length === 0 ? (
                   <div className="text-center py-24 border-2 border-dashed border-slate-200 rounded-3xl bg-white flex flex-col items-center">
                     <div className="w-16 h-16 bg-slate-50 rounded-full flex items-center justify-center mb-4">
                       <svg xmlns="http://www.w3.org/2000/svg" className="h-8 w-8 text-slate-300" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -276,7 +307,7 @@ const App: React.FC = () => {
                   </div>
                 ) : (
                   <>
-                    {stages.map((stage, idx) => (
+                    {data.stages.map((stage, idx) => (
                       <StageEditor 
                         key={stage.id} 
                         stage={stage} 
@@ -373,7 +404,7 @@ const App: React.FC = () => {
                     </div>
                   ) : (
                     <div className="flex-grow flex flex-col animate-in fade-in slide-in-from-left-4 duration-300">
-                      <JsonEditor stages={stages} onChange={handleJsonChange} />
+                      <JsonEditor data={data} onChange={handleJsonChange} />
                       <p className="mt-6 text-[11px] text-slate-400 font-bold leading-relaxed opacity-70">
                         Pro Tip: Edits here will instantly reflect in the visual roadmap and the editor on the left. You can copy-paste entire roadmaps from other projects here.
                       </p>
